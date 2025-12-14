@@ -505,7 +505,7 @@ MacroLoop() {
             }
         } else if (step.Type = "Coord") {
             try {
-                ControlClick("x" . step.X . " y" . step.Y, TargetWindowHwnd, , "Left", 1, "NA")
+                PostClick(step.X, step.Y, TargetWindowHwnd)
                 AddLog(T("Log_CoordClick") . step.Desc . " (" . step.X . ", " . step.Y . ")")
                 actionTaken := true
             } catch {
@@ -538,13 +538,33 @@ FindAndClick(imagePath, p_tolerance := 50) {
             WinGetClientPos(&cX, &cY,,, TargetWindowHwnd)
             clientClickX := CenterScreenX - cX
             clientClickY := CenterScreenY - cY
-            ControlClick("x" . clientClickX . " y" . clientClickY, TargetWindowHwnd, , "Left", 1, "NA")
+            
+            PostClick(clientClickX, clientClickY, TargetWindowHwnd)
             return true
         }
     } catch as err {
         AddLog(T("Log_Err") . err.Message)
     }
     return false
+}
+
+PostClick(x, y, hwnd) {
+    try {
+        if WinActive(hwnd) {
+            ; 활성 상태면 물리적 클릭 사용 (가장 확실함)
+            prevMode := A_CoordModeMouse
+            CoordMode "Mouse", "Client"
+            Click x, y
+            CoordMode "Mouse", prevMode
+        } else {
+            ; 비활성 상태면 ControlClick 사용
+            ControlClick("x" . x . " y" . y, hwnd, , "Left", 1, "D NA Pos")
+            Sleep(30)
+            ControlClick("x" . x . " y" . y, hwnd, , "Left", 1, "U NA Pos")
+        }
+    } catch {
+        ; 예외 처리
+    }
 }
 
 GetImageSize(path, &w, &h) {
@@ -562,11 +582,11 @@ GetImageSize(path, &w, &h) {
 AddLog(text) {
     timestamp := FormatTime(, "HH:mm:ss")
     finalText := "[" . timestamp . "] " . text . "`r`n"
+    
     try {
-        SendMessage(0x00B1, -2, -1, LogEdit.Hwnd, MyGui.Hwnd)
-        SendMessage(0x00C2, 0, StrPtr(finalText), LogEdit.Hwnd, MyGui.Hwnd)
-        SendMessage(0x00B1, -1, -1, LogEdit.Hwnd, MyGui.Hwnd)
-        SendMessage(0x00B7, 0, 0, LogEdit.Hwnd, MyGui.Hwnd)
+        LogEdit.Value .= finalText
+        ; 스크롤을 맨 아래로 내림 (WM_VSCROLL: 0x0115, SB_BOTTOM: 7)
+        SendMessage(0x0115, 7, 0, LogEdit.Hwnd, MyGui.Hwnd)
     }
 }
 
