@@ -1,40 +1,39 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
-FileEncoding "UTF-8" ; 기본 파일 인코딩을 UTF-8로 설정
-SetTitleMatchMode 2 ; 윈도우 제목 부분 일치 허용
-DllCall("SetThreadDpiAwarenessContext", "ptr", -2) ; DPI 인식 (좌표 오차 방지)
+FileEncoding "UTF-8"
+SetTitleMatchMode 2
+DllCall("SetThreadDpiAwarenessContext", "ptr", -2)
 
 ; ==============================================================================
 ; 설정 (Configuration)
 ; ==============================================================================
 global ImageFolder := "Images"
-global ConfigFile := A_ScriptDir . "\macro_data.txt" ; 데이터 저장 파일
-global SettingsFile := A_ScriptDir . "\settings.ini" ; 프로그램 설정 파일
-global LocaleFile := A_ScriptDir . "\locales.ini" ; 언어 파일
-global TargetWindowHwnd := 0 ; 선택된 대상 윈도우 핸들
-global CurrentLang := "ko" ; 기본 언어
-global LangData := Map()   ; 번역 데이터 저장소
+global ConfigFile := A_ScriptDir . "\macro_data.txt"
+global SettingsFile := A_ScriptDir . "\settings.ini"
+global LocaleFile := A_ScriptDir . "\locales.ini"
+global TargetWindowHwnd := 0 
+global CurrentLang := "ko" 
+global MinimizeOnStart := 0 
+global LangData := Map()   
 
-; 매크로 동작 순서 정의 (Script Definition)
+; 매크로 동작 순서 정의
 global MacroScript := [
-    {Type: "Image", Image: "sample_start.png", Desc: "시작 버튼", Delay: 2000, Tolerance: 50, Enabled: true},
-    {Type: "Coord", X: 500, Y: 300, Desc: "중앙 광고 닫기", Delay: 1000, Enabled: true},
-    {Type: "Image", Image: "sample_reward.png", Desc: "보상 받기", Delay: 1000, Tolerance: 50, Enabled: true},
-    {Type: "Image", Image: "sample_close.png", Desc: "닫기 버튼", Delay: 500, Tolerance: 50, Enabled: true}
+    {Type: "Image", Image: "sample_start.png", Desc: "Start", Delay: 2000, Tolerance: 50, Enabled: true, Timeout: 0, Next: "", FailNext: ""},
+    {Type: "Coord", X: 500, Y: 300, Desc: "CloseAd", Delay: 1000, Enabled: true, Timeout: 0, Next: "", FailNext: ""},
+    {Type: "Image", Image: "sample_reward.png", Desc: "GetReward", Delay: 1000, Tolerance: 50, Enabled: true, Timeout: 0, Next: "", FailNext: ""},
+    {Type: "Image", Image: "sample_close.png", Desc: "Close", Delay: 500, Tolerance: 50, Enabled: true, Timeout: 0, Next: "", FailNext: ""}
 ]
 
-; 초기화
-LoadSettings() ; 언어 설정 로드
-LoadLocale()   ; 번역 데이터 로드
-LoadMacroData() ; 매크로 데이터 로드
+LoadSettings()
+LoadLocale()
+LoadMacroData()
 
 ; ==============================================================================
-; GUI 초기화 (GUI Initialization)
+; GUI 초기화
 ; ==============================================================================
 MyGui := Gui(, T("Title"))
 MyGui.SetFont("s10", "Segoe UI")
 
-; --- 메뉴바 (언어 설정) ---
 MyMenuBar := MenuBar()
 LangMenu := Menu()
 LangMenu.Add("한국어", (*) => ChangeLanguage("ko"))
@@ -44,26 +43,29 @@ if (CurrentLang == "ko")
 else
     LangMenu.Check("English")
 MyMenuBar.Add(T("Menu_Language"), LangMenu)
+
+SettingsMenu := Menu()
+SettingsMenu.Add(T("Menu_Minimize"), ToggleMinimizeOption)
+if (MinimizeOnStart)
+    SettingsMenu.Check(T("Menu_Minimize"))
+MyMenuBar.Add(T("Menu_Settings"), SettingsMenu)
+
 MyGui.MenuBar := MyMenuBar
 
-; --- 윈도우 선택 영역 ---
 MyGui.Add("Text", "x10 y15", T("TargetWindow"))
 WindowDDL := MyGui.Add("DropDownList", "x+10 yp-3 w250 vTargetWindow Choose1", [T("FindLDPlayer")])
 BtnRefresh := MyGui.Add("Button", "x+5 yp w80 h26", T("Refresh"))
 BtnRefresh.OnEvent("Click", RefreshWindowList)
 
-; 탭 컨트롤 추가
 GuiTab := MyGui.Add("Tab3", "x10 y50 w500 h450", [T("Tab_Macro"), T("Tab_Editor")])
 
-; --- 매크로 탭 ---
 GuiTab.UseTab(1)
 BtnStart := MyGui.Add("Button", "x20 y90 w100 h40", T("Btn_Start"))
 BtnStop := MyGui.Add("Button", "x+10 yp w100 h40 Disabled", T("Btn_Stop"))
 LogEdit := MyGui.Add("Edit", "x20 y140 w480 h340 ReadOnly", T("Log_Ready") . "`r`n")
 
-; --- 스크립트 편집 탭 ---
 GuiTab.UseTab(2)
-global ScriptListView := MyGui.Add("ListView", "x20 y90 w480 h300 +Checked", [T("List_Run"), T("List_Type"), T("List_Target"), T("List_Desc"), T("List_Delay")])
+global ScriptListView := MyGui.Add("ListView", "x20 y90 w480 h300 +Checked", [T("List_Run"), T("List_Type"), T("List_Target"), T("List_Name"), T("List_Delay")])
 ScriptListView.ModifyCol(1, "40 Center"), ScriptListView.ModifyCol(2, "60 Center"), ScriptListView.ModifyCol(3, "150"), ScriptListView.ModifyCol(4, "140"), ScriptListView.ModifyCol(5, "60 Center")
 ScriptListView.OnEvent("ItemCheck", OnScriptItemCheck)
 
@@ -74,44 +76,53 @@ MyGui.Add("Button", "x+30 yp w80 h30", T("Btn_Up")).OnEvent("Click", MoveScriptU
 MyGui.Add("Button", "x+10 yp w80 h30", T("Btn_Down")).OnEvent("Click", MoveScriptDown)
 
 
-GuiTab.UseTab() ; 탭 선택 해제
+GuiTab.UseTab()
 
 BtnStart.OnEvent("Click", StartMacro)
 BtnStop.OnEvent("Click", StopMacro)
 
-; 윈도우 닫기 이벤트
 MyGui.OnEvent("Close", (*) => ExitApp())
 
-; 초기 윈도우 목록 로드
 RefreshWindowList()
 
-MyGui.Show("w525 h520")
-PopulateScriptList() ; 저장된 스크립트 목록 표시
+MyGui.Show("w525 h550") 
+PopulateScriptList()
 
-; 전역 변수
 global isRunning := false
 
-; 단축키 설정
 F1::StartMacro(0)
 F2::StopMacro(0)
 
 ; ==============================================================================
-; 언어 및 설정 관련 함수 (Language & Settings)
+; 함수 정의
 ; ==============================================================================
 LoadSettings() {
-    global CurrentLang, SettingsFile
+    global CurrentLang, MinimizeOnStart, SettingsFile
     try {
         CurrentLang := IniRead(SettingsFile, "General", "Language", "ko")
+        MinimizeOnStart := IniRead(SettingsFile, "General", "MinimizeOnStart", 0)
     } catch {
         CurrentLang := "ko"
+        MinimizeOnStart := 0
     }
 }
 
 SaveSettings() {
-    global CurrentLang, SettingsFile
+    global CurrentLang, MinimizeOnStart, SettingsFile
     try {
         IniWrite(CurrentLang, SettingsFile, "General", "Language")
+        IniWrite(MinimizeOnStart, SettingsFile, "General", "MinimizeOnStart")
     }
+}
+
+ToggleMinimizeOption(*) {
+    global MinimizeOnStart, SettingsMenu
+    MinimizeOnStart := !MinimizeOnStart
+    if (MinimizeOnStart)
+        SettingsMenu.Check(T("Menu_Minimize"))
+    else
+        SettingsMenu.Uncheck(T("Menu_Minimize"))
+    SaveSettings()
 }
 
 LoadLocale() {
@@ -120,25 +131,20 @@ LoadLocale() {
         return
 
     try {
-        ; 인코딩 문제 방지를 위해 FileRead로 UTF-8 강제 지정
         content := FileRead(LocaleFile, "UTF-8")
         currentSection := ""
-        
         Loop Parse, content, "`n", "`r" {
             line := Trim(A_LoopField)
             if (line = "" || SubStr(line, 1, 1) = ";")
                 continue
-
             if (SubStr(line, 1, 1) = "[" && SubStr(line, -1) = "]") {
                 currentSection := SubStr(line, 2, -1)
                 continue
             }
-
             if (currentSection = CurrentLang) {
                 parts := StrSplit(line, "=", 2)
-                if (parts.Length = 2) {
+                if (parts.Length = 2)
                     LangData[Trim(parts[1])] := Trim(parts[2])
-                }
             }
         }
     }
@@ -148,7 +154,7 @@ T(key) {
     global LangData
     if LangData.Has(key)
         return LangData[key]
-    return key ; 번역 없으면 키값 반환
+    return key
 }
 
 ChangeLanguage(newLang) {
@@ -156,13 +162,10 @@ ChangeLanguage(newLang) {
     if (CurrentLang != newLang) {
         CurrentLang := newLang
         SaveSettings()
-        Reload() ; 언어 변경 적용을 위해 재시작
+        Reload()
     }
 }
 
-; ==============================================================================
-; 이벤트 핸들러 및 기타
-; ==============================================================================
 OnScriptItemCheck(LV, Item, Checked) {
     global MacroScript
     if (Item > 0 && Item <= MacroScript.Length) {
@@ -181,9 +184,8 @@ RefreshWindowList(*) {
         ids := WinGetList("Android")
 
     for this_id in ids {
-        if (this_id = MyGui.Hwnd) ; 자기 자신은 제외
+        if (this_id = MyGui.Hwnd)
             continue
-
         try {
             title := WinGetTitle(this_id)
             if (title != "") {
@@ -236,10 +238,8 @@ ModifyScript(*) {
         MsgBox T("Msg_SelectEdit")
         return
     }
-
     existingData := MacroScript[focusedRow]
     newData := ShowScriptEditDialog(existingData)
-
     if (IsObject(newData)) {
         MacroScript[focusedRow] := newData
         PopulateScriptList()
@@ -262,27 +262,36 @@ ShowScriptEditDialog(p_data := "") {
     RadioImage := EditGui.Add("Radio", "x+10 yp vActionType Group", T("Dlg_Img"))
     RadioCoord := EditGui.Add("Radio", "x+10 yp", T("Dlg_Coord"))
     
-    ImgGroup := EditGui.Add("GroupBox", "x15 y60 w365 h95", T("Dlg_GrpImg"))
+    ImgGroup := EditGui.Add("GroupBox", "x15 y60 w365 h120", T("Dlg_GrpImg"))
     TxtFile := EditGui.Add("Text", "x25 y80", T("Dlg_File"))
     ImgEdit := EditGui.Add("Edit", "x+5 yp w200 h22", isEditMode && actionType="Image" ? p_data.Image : "")
     BrowseBtn := EditGui.Add("Button", "x+5 yp w80 h24", T("Dlg_Browse"))
     TxtTol := EditGui.Add("Text", "x25 y+15", T("Dlg_Tol"))
     ToleranceEdit := EditGui.Add("Edit", "x+5 yp w80 h22", isEditMode && actionType="Image" && p_data.HasOwnProp("Tolerance") ? p_data.Tolerance : "50")
     UpDnTol := EditGui.Add("UpDown", "Range0-255", ToleranceEdit.Value)
+    TxtTime := EditGui.Add("Text", "x25 y+15", T("Dlg_Timeout"))
+    TimeoutEdit := EditGui.Add("Edit", "x+5 yp w80 h22", isEditMode && actionType="Image" && p_data.HasOwnProp("Timeout") ? p_data.Timeout : "0")
 
-    CoordGroup := EditGui.Add("GroupBox", "x15 y60 w365 h65", T("Dlg_GrpCoord"))
+    CoordGroup := EditGui.Add("GroupBox", "x15 y60 w365 h120", T("Dlg_GrpCoord"))
     TxtX := EditGui.Add("Text", "x25 y85", "X:")
     CoordXEdit := EditGui.Add("Edit", "x+5 yp w60 h22", isEditMode && actionType="Coord" ? p_data.X : "0")
     TxtY := EditGui.Add("Text", "x+10 yp", "Y:")
     CoordYEdit := EditGui.Add("Edit", "x+5 yp w60 h22", isEditMode && actionType="Coord" ? p_data.Y : "0")
     BtnPick := EditGui.Add("Button", "x+10 yp w100 h24", "좌표 찾기(F1)")
 
-    EditGui.Add("Text", "x20 y170", T("Dlg_Desc"))
+    EditGui.Add("Text", "x20 y200", T("Dlg_Desc"))
     DescEdit := EditGui.Add("Edit", "x+5 yp w330 h22", isEditMode ? p_data.Desc : "")
+    
     EditGui.Add("Text", "x20 y+15", T("Dlg_Delay"))
     DelayEdit := EditGui.Add("Edit", "x+5 yp w100 h22", isEditMode ? p_data.Delay : "1000")
     EditGui.Add("UpDown", "Range0-600000", DelayEdit.Value)
+
+    EditGui.Add("Text", "x20 y+15", T("Dlg_Next"))
+    NextEdit := EditGui.Add("Edit", "x+5 yp w150 h22", isEditMode && p_data.HasOwnProp("Next") ? p_data.Next : "")
     
+    EditGui.Add("Text", "x+20 yp", T("Dlg_FailNext"))
+    FailNextEdit := EditGui.Add("Edit", "x+5 yp w150 h22", isEditMode && p_data.HasOwnProp("FailNext") ? p_data.FailNext : "")
+
     OkBtn := EditGui.Add("Button", "x70 y+30 w120 h30 Default", T("Btn_Ok"))
     CancelBtn := EditGui.Add("Button", "x+10 yp w120 h30", T("Btn_Cancel"))
     
@@ -294,6 +303,8 @@ ShowScriptEditDialog(p_data := "") {
         TxtTol.Visible := RadioImage.Value,
         ToleranceEdit.Visible := RadioImage.Value,
         UpDnTol.Visible := RadioImage.Value,
+        TxtTime.Visible := RadioImage.Value,
+        TimeoutEdit.Visible := RadioImage.Value,
         
         CoordGroup.Visible := RadioCoord.Value,
         TxtX.Visible := RadioCoord.Value,
@@ -316,7 +327,6 @@ ShowScriptEditDialog(p_data := "") {
         ToolTip()
         CoordMode "Mouse", "Screen"
         MouseGetPos(&mX, &mY)
-        
         finalX := mX
         finalY := mY
         if (TargetWindowHwnd && WinExist(TargetWindowHwnd)) {
@@ -342,7 +352,14 @@ ShowScriptEditDialog(p_data := "") {
             return
         }
         
+        if (InStr(NextEdit.Value, "|") || InStr(FailNextEdit.Value, "|")) {
+            MsgBox "이동할 이름에 '|' 문자를 사용할 수 없습니다."
+            return
+        }
+        
         delayVal := StrReplace(DelayEdit.Value, ",", "")
+        nextVal := Trim(NextEdit.Value)
+        failNextVal := Trim(FailNextEdit.Value)
         
         local data := {}
         if (RadioImage.Value) {
@@ -350,24 +367,23 @@ ShowScriptEditDialog(p_data := "") {
                 MsgBox T("Msg_ImgReq")
                 return
             }
-            toleranceVal := StrReplace(ToleranceEdit.Value, ",", "")
+            tolVal := StrReplace(ToleranceEdit.Value, ",", "")
+            timeVal := StrReplace(TimeoutEdit.Value, ",", "")
             
-            if (!IsNumber(toleranceVal) or toleranceVal < 0 or toleranceVal > 255) {
+            if (!IsNumber(tolVal) or tolVal < 0 or tolVal > 255) {
                 MsgBox T("Msg_TolReq")
                 return
             }
-            data := {Type: "Image", Image: ImgEdit.Value, Desc: DescEdit.Value, Delay: Round(delayVal), Tolerance: Round(toleranceVal)}
+            data := {Type: "Image", Image: ImgEdit.Value, Desc: DescEdit.Value, Delay: Round(delayVal), Tolerance: Round(tolVal), Timeout: Round(timeVal), Next: nextVal, FailNext: failNextVal}
         } else {
              xVal := StrReplace(CoordXEdit.Value, ",", "")
              yVal := StrReplace(CoordYEdit.Value, ",", "")
-             
              if (!IsNumber(xVal) or !IsNumber(yVal)) {
                 MsgBox T("Msg_CoordReq")
                 return
             }
-            data := {Type: "Coord", X: Round(xVal), Y: Round(yVal), Desc: DescEdit.Value, Delay: Round(delayVal)}
+            data := {Type: "Coord", X: Round(xVal), Y: Round(yVal), Desc: DescEdit.Value, Delay: Round(delayVal), Timeout: 0, Next: nextVal, FailNext: failNextVal}
         }
-        
         savedData := data
         EditGui.Destroy()
     }
@@ -384,7 +400,7 @@ ShowScriptEditDialog(p_data := "") {
     ToggleControls() 
     
     MyGui.Opt("+Disabled")
-    EditGui.Show("w400 h320")
+    EditGui.Show("w400 h450") 
     WinWaitClose(EditGui)
     MyGui.Opt("-Disabled")
     WinActivate(MyGui)
@@ -430,11 +446,8 @@ MoveScriptDown(*) {
     SaveMacroData()
 }
 
-; ==============================================================================
-; 매크로 로직 (Macro Logic)
-; ==============================================================================
 StartMacro(*) {
-    global isRunning, TargetWindowHwnd, TargetWindowList, WindowDDL
+    global isRunning, TargetWindowHwnd, TargetWindowList, WindowDDL, MinimizeOnStart, CurrentStepIndex
     if (isRunning)
         return
 
@@ -452,28 +465,34 @@ StartMacro(*) {
     }
 
     isRunning := true
+    CurrentStepIndex := 1 ; 인덱스 초기화
     BtnStart.Enabled := false
     BtnStop.Enabled := true
     AddLog(T("Log_Start"))
-    AddLog(T("Log_Notice"))
     
-    SetTimer(MacroLoop, 100)
+    if (MinimizeOnStart)
+        MyGui.Minimize()
+    
+    SetTimer(MacroLoopStep, 100) 
 }
 
 StopMacro(*) {
-    global isRunning
+    global isRunning, MinimizeOnStart
     if (!isRunning)
         return
 
     isRunning := false
     BtnStart.Enabled := true
     BtnStop.Enabled := false
-    SetTimer(MacroLoop, 0)
+    SetTimer(MacroLoopStep, 0)
     AddLog(T("Log_Stop"))
+    
+    if (MinimizeOnStart)
+        MyGui.Restore()
 }
 
-MacroLoop() {
-    global isRunning, MacroScript, TargetWindowHwnd
+MacroLoopStep() {
+    global isRunning, MacroScript, TargetWindowHwnd, CurrentStepIndex
     if (!isRunning)
         return
 
@@ -483,67 +502,112 @@ MacroLoop() {
         return
     }
     
+    if (CurrentStepIndex > MacroScript.Length) {
+        CurrentStepIndex := 1
+        return 
+    }
+
+    step := MacroScript[CurrentStepIndex]
+    
+    if (step.HasOwnProp("Enabled") && step.Enabled == false) {
+        CurrentStepIndex++
+        return 
+    }
+
+    actionResult := false
     CoordMode "Mouse", "Screen"
 
-    For index, step in MacroScript {
-        if (!isRunning)
-            break
-
-        if (step.HasOwnProp("Enabled") && step.Enabled == false)
-            continue
-
-        actionTaken := false
-        if (step.Type = "Image") {
-            imagePath := ImageFolder . "\" . step.Image
-            if !FileExist(imagePath) {
-                continue 
-            }
-            local currentTolerance := (step.HasOwnProp("Tolerance") ? step.Tolerance : 50)
-            if (FindAndClick(imagePath, currentTolerance)) {
-                AddLog(T("Log_FoundClick") . step.Desc . " (*" . currentTolerance . ")")
-                actionTaken := true
-            }
-        } else if (step.Type = "Coord") {
-            try {
-                PostClick(step.X, step.Y, TargetWindowHwnd)
-                AddLog(T("Log_CoordClick") . step.Desc . " (" . step.X . ", " . step.Y . ")")
-                actionTaken := true
-            } catch {
-                AddLog(T("Log_ClickFail"))
+    if (step.Type = "Image") {
+        imagePath := ImageFolder . "\" . step.Image
+        if !FileExist(imagePath) {
+            AddLog(T("Msg_ImageNotFound") . step.Image)
+            actionResult := false 
+        } else {
+            tol := step.HasOwnProp("Tolerance") ? step.Tolerance : 50
+            timeout := step.HasOwnProp("Timeout") ? step.Timeout : 0
+            if (FindAndClick(imagePath, tol, timeout)) {
+                AddLog(T("Log_FoundClick") . step.Desc)
+                actionResult := true
+            } else {
+                actionResult := false
             }
         }
-
-        if (actionTaken) {
-             Sleep(step.Delay)
+    } else if (step.Type = "Coord") {
+        try {
+            PostClick(step.X, step.Y, TargetWindowHwnd)
+            AddLog(T("Log_CoordClick") . step.Desc)
+            actionResult := true
+        } catch {
+            AddLog(T("Log_ClickFail"))
+            actionResult := false
         }
     }
+
+    nextName := ""
+    if (actionResult) {
+        if (step.HasOwnProp("Next") && step.Next != "")
+            nextName := step.Next
+    } else {
+        if (step.HasOwnProp("FailNext") && step.FailNext != "")
+            nextName := step.FailNext
+    }
     
-    Sleep(200)
+    if (nextName != "") {
+        foundIndex := 0
+        Loop MacroScript.Length {
+            if (MacroScript[A_Index].Desc = nextName) {
+                foundIndex := A_Index
+                break
+            }
+        }
+        
+        if (foundIndex > 0) {
+            CurrentStepIndex := foundIndex
+        } else {
+            AddLog(T("Log_JumpFail") . nextName)
+            CurrentStepIndex++
+        }
+    } else {
+        CurrentStepIndex++
+    }
+    
+    if (actionResult)
+        Sleep(step.Delay)
 }
 
-FindAndClick(imagePath, p_tolerance := 50) {
+FindAndClick(imagePath, p_tolerance := 50, p_timeout := 0) {
     global TargetWindowHwnd
     CoordMode "Pixel", "Screen"
-    try {
-        WinGetPos(&wX, &wY, &wW, &wH, TargetWindowHwnd)
-        searchX1 := wX
-        searchY1 := wY
-        searchX2 := wX + wW
-        searchY2 := wY + wH
-        
-        if ImageSearch(&FoundScreenX, &FoundScreenY, searchX1, searchY1, searchX2, searchY2, "*" . p_tolerance . " " . imagePath) {
-            GetImageSize(imagePath, &imgW, &imgH)
-            CenterScreenX := FoundScreenX + (imgW // 2)
-            CenterScreenY := FoundScreenY + (imgH // 2)
-            WinGetClientPos(&cX, &cY,,, TargetWindowHwnd)
-            clientClickX := CenterScreenX - cX
-            clientClickY := CenterScreenY - cY
+    
+    StartTime := A_TickCount
+    Loop {
+        try {
+            WinGetPos(&wX, &wY, &wW, &wH, TargetWindowHwnd)
+            searchX1 := wX
+            searchY1 := wY
+            searchX2 := wX + wW
+            searchY2 := wY + wH
             
-            PostClick(clientClickX, clientClickY, TargetWindowHwnd)
-            return true
+            if ImageSearch(&FoundScreenX, &FoundScreenY, searchX1, searchY1, searchX2, searchY2, "*" . p_tolerance . " " . imagePath) {
+                GetImageSize(imagePath, &imgW, &imgH)
+                CenterScreenX := FoundScreenX + (imgW // 2)
+                CenterScreenY := FoundScreenY + (imgH // 2)
+                WinGetClientPos(&cX, &cY,,, TargetWindowHwnd)
+                clientClickX := CenterScreenX - cX
+                clientClickY := CenterScreenY - cY
+                
+                PostClick(clientClickX, clientClickY, TargetWindowHwnd)
+                return true
+            }
+        } catch as err {
+            AddLog(T("Log_Err") . err.Message)
+            return false
         }
-    } catch as err {
-        AddLog(T("Log_Err") . err.Message)
+        
+        if (p_timeout <= 0 || (A_TickCount - StartTime) > p_timeout * 1000)
+            break
+            
+        Sleep(500) 
     }
     return false
 }
@@ -551,19 +615,16 @@ FindAndClick(imagePath, p_tolerance := 50) {
 PostClick(x, y, hwnd) {
     try {
         if WinActive(hwnd) {
-            ; 활성 상태면 물리적 클릭 사용 (가장 확실함)
             prevMode := A_CoordModeMouse
             CoordMode "Mouse", "Client"
             Click x, y
             CoordMode "Mouse", prevMode
         } else {
-            ; 비활성 상태면 ControlClick 사용
             ControlClick("x" . x . " y" . y, hwnd, , "Left", 1, "D NA Pos")
             Sleep(30)
             ControlClick("x" . x . " y" . y, hwnd, , "Left", 1, "U NA Pos")
         }
     } catch {
-        ; 예외 처리
     }
 }
 
@@ -582,10 +643,8 @@ GetImageSize(path, &w, &h) {
 AddLog(text) {
     timestamp := FormatTime(, "HH:mm:ss")
     finalText := "[" . timestamp . "] " . text . "`r`n"
-    
     try {
         LogEdit.Value .= finalText
-        ; 스크롤을 맨 아래로 내림 (WM_VSCROLL: 0x0115, SB_BOTTOM: 7)
         SendMessage(0x0115, 7, 0, LogEdit.Hwnd, MyGui.Hwnd)
     }
 }
@@ -602,14 +661,17 @@ SaveMacroData() {
         delay := step.HasOwnProp("Delay") ? step.Delay : 0
         tolerance := step.HasOwnProp("Tolerance") ? step.Tolerance : 50
         enabled := (step.HasOwnProp("Enabled") && step.Enabled) ? 1 : 0
-        line := type . "|" . img . "|" . x . "|" . y . "|" . desc . "|" . delay . "|" . tolerance . "|" . enabled
+        timeout := step.HasOwnProp("Timeout") ? step.Timeout : 0
+        next := step.HasOwnProp("Next") ? step.Next : ""
+        failNext := step.HasOwnProp("FailNext") ? step.FailNext : ""
+        
+        line := type . "|" . img . "|" . x . "|" . y . "|" . desc . "|" . delay . "|" . tolerance . "|" . enabled . "|" . timeout . "|" . next . "|" . failNext
         fileContent .= line . "`n"
     }
     try {
         if FileExist(ConfigFile)
             FileDelete(ConfigFile)
         FileAppend(fileContent, ConfigFile, "UTF-8")
-        ; MsgBox T("Msg_SaveSuccess") . ConfigFile 
     } catch as err {
         MsgBox T("Msg_SaveFail") . err.Message
     }
@@ -644,11 +706,26 @@ LoadMacroData() {
                 step.Enabled := (Integer(parts[8]) == 1)
             else
                 step.Enabled := true
+            
+            if (parts.Length >= 9)
+                step.Timeout := Integer(parts[9])
+            else
+                step.Timeout := 0
+                
+            if (parts.Length >= 10)
+                step.Next := parts[10]
+            else
+                step.Next := ""
+                
+            if (parts.Length >= 11)
+                step.FailNext := parts[11]
+            else
+                step.FailNext := ""
+
             newScript.Push(step)
         }
         if (newScript.Length > 0) {
             MacroScript := newScript
-            ; MsgBox T("Msg_LoadSuccess") . newScript.Length 
         }
     } catch as err {
         MsgBox T("Msg_LoadFail") . err.Message
