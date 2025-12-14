@@ -1,0 +1,4 @@
+﻿Coord||500|300|중앙 광고 닫기|1000|50
+Image|sample_start.png|0|0|시작 버튼|2000|50
+Image|sample_reward.png|0|0|보상 받기|1000|50
+Image|sample_close.png|0|0|닫기 버튼|500|50
