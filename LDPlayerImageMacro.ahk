@@ -249,7 +249,7 @@ ModifyScript(*) {
 }
 
 ShowScriptEditDialog(p_data := "") {
-    global MyGui, ImageFolder, TargetWindowHwnd
+    global MyGui, ImageFolder, TargetWindowHwnd, MacroScript
 
     isEditMode := IsObject(p_data)
     actionType := isEditMode ? p_data.Type : "Image"
@@ -262,9 +262,10 @@ ShowScriptEditDialog(p_data := "") {
     RadioImage := EditGui.Add("Radio", "x+10 yp vActionType Group", T("Dlg_Img"))
     RadioCoord := EditGui.Add("Radio", "x+10 yp", T("Dlg_Coord"))
     
-    ImgGroup := EditGui.Add("GroupBox", "x15 y60 w365 h120", T("Dlg_GrpImg"))
-    TxtFile := EditGui.Add("Text", "x25 y80", T("Dlg_File"))
-    ImgEdit := EditGui.Add("Edit", "x+5 yp w200 h22", isEditMode && actionType="Image" ? p_data.Image : "")
+    ; 이미지 그룹 (높이 140으로 증가)
+    ImgGroup := EditGui.Add("GroupBox", "x15 y60 w370 h140", T("Dlg_GrpImg"))
+    TxtFile := EditGui.Add("Text", "x25 y80 w40", T("Dlg_File"))
+    ImgEdit := EditGui.Add("Edit", "x+5 yp w220 h22", isEditMode && actionType="Image" ? p_data.Image : "")
     BrowseBtn := EditGui.Add("Button", "x+5 yp w80 h24", T("Dlg_Browse"))
     TxtTol := EditGui.Add("Text", "x25 y+15", T("Dlg_Tol"))
     ToleranceEdit := EditGui.Add("Edit", "x+5 yp w80 h22", isEditMode && actionType="Image" && p_data.HasOwnProp("Tolerance") ? p_data.Tolerance : "50")
@@ -272,25 +273,40 @@ ShowScriptEditDialog(p_data := "") {
     TxtTime := EditGui.Add("Text", "x25 y+15", T("Dlg_Timeout"))
     TimeoutEdit := EditGui.Add("Edit", "x+5 yp w80 h22", isEditMode && actionType="Image" && p_data.HasOwnProp("Timeout") ? p_data.Timeout : "0")
 
-    CoordGroup := EditGui.Add("GroupBox", "x15 y60 w365 h120", T("Dlg_GrpCoord"))
+    ; 좌표 그룹 (이미지 그룹과 같은 위치)
+    CoordGroup := EditGui.Add("GroupBox", "x15 y60 w370 h140", T("Dlg_GrpCoord"))
     TxtX := EditGui.Add("Text", "x25 y85", "X:")
     CoordXEdit := EditGui.Add("Edit", "x+5 yp w60 h22", isEditMode && actionType="Coord" ? p_data.X : "0")
     TxtY := EditGui.Add("Text", "x+10 yp", "Y:")
     CoordYEdit := EditGui.Add("Edit", "x+5 yp w60 h22", isEditMode && actionType="Coord" ? p_data.Y : "0")
     BtnPick := EditGui.Add("Button", "x+10 yp w100 h24", "좌표 찾기(F1)")
 
-    EditGui.Add("Text", "x20 y200", T("Dlg_Desc"))
-    DescEdit := EditGui.Add("Edit", "x+5 yp w330 h22", isEditMode ? p_data.Desc : "")
+    ; 공통 입력 (위치 하향 조정 y220)
+    EditGui.Add("Text", "x20 y220", T("Dlg_Desc"))
+    DescEdit := EditGui.Add("Edit", "x+5 yp w300 h22", isEditMode ? p_data.Desc : "")
     
     EditGui.Add("Text", "x20 y+15", T("Dlg_Delay"))
-    DelayEdit := EditGui.Add("Edit", "x+5 yp w100 h22", isEditMode ? p_data.Delay : "1000")
+    DelayEdit := EditGui.Add("Edit", "x+5 yp w80 h22", isEditMode ? p_data.Delay : "1000")
     EditGui.Add("UpDown", "Range0-600000", DelayEdit.Value)
 
+    ; 이름 목록 생성
+    NameList := [""] 
+    For step in MacroScript {
+        if (step.Desc != "")
+            NameList.Push(step.Desc)
+    }
+
     EditGui.Add("Text", "x20 y+15", T("Dlg_Next"))
-    NextEdit := EditGui.Add("Edit", "x+5 yp w150 h22", isEditMode && p_data.HasOwnProp("Next") ? p_data.Next : "")
+    NextEdit := EditGui.Add("DropDownList", "x+5 yp w150 Choose1", NameList) ; 너비 증가
+    if (isEditMode && p_data.HasOwnProp("Next") && p_data.Next != "") {
+        try NextEdit.Text := p_data.Next
+    }
     
-    EditGui.Add("Text", "x+20 yp", T("Dlg_FailNext"))
-    FailNextEdit := EditGui.Add("Edit", "x+5 yp w150 h22", isEditMode && p_data.HasOwnProp("FailNext") ? p_data.FailNext : "")
+    EditGui.Add("Text", "x20 y+15", T("Dlg_FailNext")) ; 줄바꿈
+    FailNextEdit := EditGui.Add("DropDownList", "x+5 yp w150 Choose1", NameList) ; 너비 증가
+    if (isEditMode && p_data.HasOwnProp("FailNext") && p_data.FailNext != "") {
+        try FailNextEdit.Text := p_data.FailNext
+    }
 
     OkBtn := EditGui.Add("Button", "x70 y+30 w120 h30 Default", T("Btn_Ok"))
     CancelBtn := EditGui.Add("Button", "x+10 yp w120 h30", T("Btn_Cancel"))
@@ -352,14 +368,9 @@ ShowScriptEditDialog(p_data := "") {
             return
         }
         
-        if (InStr(NextEdit.Value, "|") || InStr(FailNextEdit.Value, "|")) {
-            MsgBox "이동할 이름에 '|' 문자를 사용할 수 없습니다."
-            return
-        }
-        
         delayVal := StrReplace(DelayEdit.Value, ",", "")
-        nextVal := Trim(NextEdit.Value)
-        failNextVal := Trim(FailNextEdit.Value)
+        nextVal := NextEdit.Text
+        failNextVal := FailNextEdit.Text
         
         local data := {}
         if (RadioImage.Value) {
@@ -389,6 +400,8 @@ ShowScriptEditDialog(p_data := "") {
     }
 
     RadioImage.Value := (actionType = "Image")
+    RadioCoord.Value := (actionType = "Coord") 
+
     RadioImage.OnEvent("Click", ToggleControls)
     RadioCoord.OnEvent("Click", ToggleControls)
     BrowseBtn.OnEvent("Click", SelectImageFile)
@@ -400,7 +413,7 @@ ShowScriptEditDialog(p_data := "") {
     ToggleControls() 
     
     MyGui.Opt("+Disabled")
-    EditGui.Show("w400 h450") 
+    EditGui.Show("w420 h550") ; 높이 증가
     WinWaitClose(EditGui)
     MyGui.Opt("-Disabled")
     WinActivate(MyGui)
